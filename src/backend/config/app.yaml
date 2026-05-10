@@ -1,0 +1,29 @@
+app:
+  host: 0.0.0.0
+  port: 5000
+  cors_origins:
+    - http://localhost:5173
+    - http://localhost:8080
+
+storage:
+  data_dir: runtime/data
+  uploads_dir: runtime/uploads
+  logs_dir: runtime/logs
+  reports_dir: runtime/reports
+
+processing:
+  chunk_size: 900
+  chunk_overlap: 150
+  keyword_top_k: 18
+  graph_keyword_limit: 16
+  summary_ratio: 0.3
+
+rag:
+  top_k: 5
+
+llm:
+  enabled: true
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  api_key: "sk-4d8499672d304e4c9e48176fd23326fc"
+  model: qwen3.6-plus
+  timeout_seconds: 180

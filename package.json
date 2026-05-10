@@ -1,0 +1,10 @@
+{
+  "name": "simpler-textbook-workspace",
+  "private": true,
+  "scripts": {
+    "frontend:dev": "npm --prefix src/frontend run dev",
+    "frontend:build": "npm --prefix src/frontend run build",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  }
+}

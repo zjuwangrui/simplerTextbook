@@ -1,1 +1,9 @@
 *.pdf
+.env
+__pycache__/
+node_modules/
+dist/
+runtime/backend/*
+!runtime/backend/.gitkeep
+src/backend/runtime/*
+!src/backend/runtime/.gitkeep
