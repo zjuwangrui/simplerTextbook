@@ -31,8 +31,11 @@
 - `llm.base_url`
 - `llm.api_key`
 - `llm.model`
+- `llm.prompt_file`
 
 如果你要接入真实大模型问答，把 `llm.enabled` 改为 `true`，并填写 `api_key` 和对应的 OpenAI 兼容接口地址。
+
+知识图谱章节级抽取提示词在 [prompt.md](/D:/constructing_projects/simplerTextbook/src/backend/config/prompt.md)，路径由 `llm.prompt_file` 控制，可以后续持续优化。
 
 ## 启动
 
@@ -111,13 +114,27 @@ python app.py
 
 ## 测试脚本
 
-后端上传接口测试脚本在 [Invoke-TextbookUpload.ps1](/D:/constructing_projects/simplerTextbook/tests/Invoke-TextbookUpload.ps1)。
+后端测试脚本拆成两步：
 
-示例：
+- [Parse-Textbook.ps1](/D:/constructing_projects/simplerTextbook/tests/Parse-Textbook.ps1)
+- [Generate-GraphJson.ps1](/D:/constructing_projects/simplerTextbook/tests/Generate-GraphJson.ps1)
+
+先解析正文：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tests\Invoke-TextbookUpload.ps1 -FilePath "D:\books\生理学.pdf" -WaitForCompletion
+powershell -ExecutionPolicy Bypass -File .\tests\Parse-Textbook.ps1
 ```
+
+再生成图谱 JSON：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\Generate-GraphJson.ps1
+```
+
+输出文件：
+
+- `tests/output/text.json`：解析后的正文结构结果，作为图谱生成输入
+- `tests/output/image.json`：知识图谱可视化 JSON 结果
 
 ## 说明
 

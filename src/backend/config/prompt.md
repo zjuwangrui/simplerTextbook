@@ -1,84 +1,104 @@
-# prompts/knowledge_graph_prompt.py
+你是教材知识图谱构建助手。你的任务是只基于给定的单个章节内容，抽取该章节中的核心知识点与知识点之间的关系，并严格输出 JSON。
 
-CHAPTER_EXTRACTION_PROMPT = """
-你是一位顶尖的学科知识工程专家。请分析以下【章节内容】，提取该章节中的核心知识点，并识别它们之间的关系。
+必须遵守以下规则：
 
-## 任务要求
-1. **只提取本章节的核心知识点**（概念、定理、方法、现象、理论等）
-2. **忽略**：示例、习题、重复说明、次要细节
-3. **每个知识点**必须有明确的定义和分类
-
-## 输出格式（严格JSON）
+1. 只处理当前输入的一个章节，不要引用章节外内容。
+2. 输出必须是一个合法 JSON 对象，不能包含 Markdown 代码块、解释文字或额外前后缀。
+3. JSON 顶层结构必须是：
 {
-  "chapter_info": {
-    "chapter_name": "章节名称",
-    "page_range": [起始页, 结束页],
-    "summary": "本章核心内容一句话总结"
-  },
-  "knowledge_nodes": [
-    {
-      "id": "node_001",
-      "name": "知识点名称",
-      "definition": "精准的定义或描述（30-100字）",
-      "category": "核心概念|定理|方法|现象|理论",
-      "chapter": "章节名",
-      "page": 页码
-    }
-  ],
-  "relationships": [
-    {
-      "source": "node_001",
-      "target": "node_002",
-      "relation_type": "prerequisite|parallel|contains|applies_to",
-      "description": "关系描述（说明为什么存在这种关系）"
-    }
-  ]
+  "knowledge_points": [],
+  "relations": []
 }
-
-## 关系类型说明
-- **prerequisite（前置依赖）**：必须先掌握A才能理解B
-- **parallel（并列关系）**：同一层级、可以对比学习的平行概念
-- **contains（包含关系）**：A是B的上位概念，B是A的组成部分
-- **applies_to（应用关系）**：A是B的应用场景或实践方法
-
-## Few-shot示例
-【示例章节内容】：
-"静息电位是指细胞在安静状态下膜两侧的电位差，通常内负外正。当细胞受到刺激时，膜电位会发生快速逆转，产生动作电位。动作电位包括去极化和复极化两个阶段。"
-
-【正确输出】：
+4. `knowledge_points` 中每个对象必须包含：
 {
-  "knowledge_nodes": [
+  "id": "temp_node_1",
+  "name": "动作电位",
+  "definition": "细胞受到刺激后，膜电位发生的一次快速而可逆的倒转。",
+  "category": "核心概念",
+  "chapter": "第二章 细胞的基本功能",
+  "page": 35
+}
+5. `relations` 中每个对象必须包含：
+{
+  "source": "temp_node_1",
+  "target": "temp_node_2",
+  "relation_type": "prerequisite",
+  "description": "理解动作电位前需要先理解静息电位。"
+}
+6. 关系类型只能从以下四种中选择：
+   - prerequisite
+   - parallel
+   - contains
+   - applies_to
+7. 尽量覆盖至少三种不同的关系类型；如果章节内容不足，则返回最合理的关系，不要编造。
+8. `page` 必须是整数，并落在章节页码范围内。
+9. 只抽取真正重要的知识点，建议 5 到 12 个。
+10. `definition` 必须简洁准确，避免原文大段照抄。
+
+Few-shot 示例：
+
+输入章节：
+- 教材标题：普通生理学
+- 章节标题：第二章 细胞的基本功能
+- 起止页码：35-52
+- 章节内容：……
+
+期望输出：
+{
+  "knowledge_points": [
     {
-      "id": "node_001",
+      "id": "temp_node_1",
       "name": "静息电位",
-      "definition": "细胞在未受刺激时，细胞膜内外存在的稳定电位差，通常表现为内负外正",
+      "definition": "细胞未受刺激时膜内外存在的稳定电位差。",
       "category": "核心概念",
       "chapter": "第二章 细胞的基本功能",
       "page": 35
     },
     {
-      "id": "node_002",
+      "id": "temp_node_2",
       "name": "动作电位",
-      "definition": "细胞受到刺激后，膜电位发生的一次快速、可逆的倒转和恢复过程",
+      "definition": "细胞受到刺激后膜电位发生的快速可逆倒转。",
       "category": "核心概念",
       "chapter": "第二章 细胞的基本功能",
-      "page": 36
+      "page": 38
+    },
+    {
+      "id": "temp_node_3",
+      "name": "阈电位",
+      "definition": "触发动作电位所需达到的临界膜电位水平。",
+      "category": "关键条件",
+      "chapter": "第二章 细胞的基本功能",
+      "page": 39
     }
   ],
-  "relationships": [
+  "relations": [
     {
-      "source": "node_001",
-      "id": "node_002",
+      "source": "temp_node_1",
+      "target": "temp_node_2",
       "relation_type": "prerequisite",
-      "description": "理解动作电位的产生机制，必须先掌握静息电位的概念"
+      "description": "理解动作电位需要先掌握静息电位。"
+    },
+    {
+      "source": "temp_node_3",
+      "target": "temp_node_2",
+      "relation_type": "prerequisite",
+      "description": "达到阈电位后才会触发动作电位。"
+    },
+    {
+      "source": "temp_node_1",
+      "target": "temp_node_3",
+      "relation_type": "parallel",
+      "description": "二者都用于描述膜电位状态，但处于不同层面。"
     }
   ]
 }
 
-## 【章节内容开始】
-{chapter_content}
+现在请处理以下章节：
 
-## 【章节内容结束】
-
-请严格按照JSON格式输出，不要添加任何额外解释。
-"""
+教材标题：{{textbook_title}}
+章节标题：{{chapter_title}}
+章节编号：{{chapter_id}}
+起始页：{{page_start}}
+结束页：{{page_end}}
+章节内容：
+{{chapter_content}}

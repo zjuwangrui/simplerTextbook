@@ -41,6 +41,7 @@ class LLMSection:
     api_key: str
     model: str
     timeout_seconds: int
+    prompt_file: Path
 
 
 @dataclass
@@ -94,6 +95,7 @@ def load_settings() -> Settings:
             api_key=str(raw["llm"]["api_key"]),
             model=str(raw["llm"]["model"]),
             timeout_seconds=int(raw["llm"]["timeout_seconds"]),
+            prompt_file=_resolve_path(base_dir, str(raw["llm"].get("prompt_file", "config/prompt.md"))),
         ),
     )
 

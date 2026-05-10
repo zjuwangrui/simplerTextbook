@@ -41,7 +41,7 @@ def create_app() -> Flask:
     report_repository = ReportRepository(settings.storage)
     llm_client = OpenAICompatibleClient(settings.llm)
 
-    graph_service = GraphService(settings.processing)
+    graph_service = GraphService(settings.processing, llm_client, settings.llm.prompt_file)
     analysis_service = AnalysisService(graph_service)
     integration_service = IntegrationService(settings.processing)
     textbook_service = TextbookService(

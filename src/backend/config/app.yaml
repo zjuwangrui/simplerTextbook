@@ -28,3 +28,4 @@ llm:
   api_key: "sk-4d8499672d304e4c9e48176fd23326fc"
   model: qwen3.6-plus
   timeout_seconds: 180
+  prompt_file: config/prompt.md

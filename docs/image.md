@@ -25,4 +25,14 @@
 }
 • LLM调用时的Prompt设计建议：明确要求输出JSON格式，给出few-shot示例，
 限制每次调用只处理一个章节（避免上下文过长）
-llm的prompt可以写成文档，放在src\backend\config\prompt.md，并且这个文件的路径可以配置。
+llm的prompt可以写成文档，放在src\backend\config\prompt.md，并且这个文件的路径可以配置。prompt.md里面是现在的示例提示词，后续可以根据需要修改和优化提示词内容。
+
+写两个测试后端api的powershell脚本：
+1. 先解析pdf正文，保存解析结果到 tests\output\text.json。
+2. 再基于解析结果单独生成知识图谱json，保存到 tests\output\image.json。
+
+要求：
+- 无命令行参数，在脚本内部设置参数和变量。
+- `text.json` 和 `image.json` 都采用数组结构，每次运行追加新结果，不覆盖旧结果。
+- 每条记录保留 `metadata`、`description`、`result`。
+- 脚本尽量简洁明了，注释清晰。

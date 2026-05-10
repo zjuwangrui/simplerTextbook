@@ -9,7 +9,14 @@ const GROUP_COLORS: Record<string, string> = {
   keyword: "#f97316",
   textbook: "#0f172a",
   "shared-keyword": "#0891b2",
-  "unique-keyword": "#ca8a04"
+  "unique-keyword": "#ca8a04",
+  "核心概念": "#1d4ed8",
+  "关键条件": "#7c3aed",
+  "方法": "#0f766e",
+  "定理": "#be123c",
+  "现象": "#ea580c",
+  "机制": "#0369a1",
+  "应用场景": "#65a30d"
 };
 
 export function KnowledgeGraphCanvas({ graph }: KnowledgeGraphCanvasProps) {
@@ -26,6 +33,7 @@ export function KnowledgeGraphCanvas({ graph }: KnowledgeGraphCanvasProps) {
   const centerX = width / 2;
   const centerY = height / 2;
   const placedNodes = graph.nodes.map((node, index) => placeNode(node, index, graph.nodes.length, centerX, centerY));
+  const legendGroups = Array.from(new Set(placedNodes.map((node) => node.group)));
 
   return (
     <div className="graph-shell">
@@ -72,9 +80,9 @@ export function KnowledgeGraphCanvas({ graph }: KnowledgeGraphCanvasProps) {
         ))}
       </svg>
       <div className="graph-legend">
-        {Object.entries(GROUP_COLORS).map(([group, color]) => (
+        {legendGroups.map((group) => (
           <span className="legend-item" key={group}>
-            <i style={{ backgroundColor: color }} />
+            <i style={{ backgroundColor: GROUP_COLORS[group] ?? "#334155" }} />
             {group}
           </span>
         ))}

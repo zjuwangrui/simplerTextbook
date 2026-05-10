@@ -72,6 +72,9 @@ class TextbookRepository:
             "total_chars": detail.get("total_chars", 0),
             "parse_progress": detail.get("parse_progress", {}),
             "error_message": detail.get("error_message", ""),
+            "graph_status": detail.get("graph_status", "not_started"),
+            "graph_progress": detail.get("graph_progress", {}),
+            "graph_error_message": detail.get("graph_error_message", ""),
             "stats": detail.get(
                 "stats",
                 {

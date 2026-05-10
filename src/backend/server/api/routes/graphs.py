@@ -6,8 +6,19 @@ graphs_bp = Blueprint("graphs", __name__, url_prefix="/api/graphs")
 @graphs_bp.get("/textbooks/<textbook_id>")
 def get_textbook_graph(textbook_id: str):
     service = current_app.config["services"]["textbook"]
-    detail = service.get_textbook_detail(textbook_id)
-    return jsonify(detail["graph"])
+    return jsonify(service.get_graph_payload(textbook_id))
+
+
+@graphs_bp.get("/textbooks/<textbook_id>/status")
+def get_textbook_graph_status(textbook_id: str):
+    service = current_app.config["services"]["textbook"]
+    return jsonify(service.get_graph_status(textbook_id))
+
+
+@graphs_bp.post("/textbooks/<textbook_id>/generate")
+def generate_textbook_graph(textbook_id: str):
+    service = current_app.config["services"]["textbook"]
+    return jsonify(service.enqueue_graph_generation(textbook_id)), 202
 
 
 @graphs_bp.post("/combined")

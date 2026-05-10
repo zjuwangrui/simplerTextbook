@@ -31,6 +31,48 @@ class TextbookService:
             raise AppError("所选教材仍在解析中，暂无法执行该操作。", 400, {"pending_titles": pending})
         return textbooks
 
+    def get_graph_payload(self, textbook_id: str) -> dict:
+        detail = self.repository.get_textbook(textbook_id)
+        graph = dict(detail.get("graph", {}))
+        graph["graph_status"] = detail.get("graph_status", "not_started")
+        graph["graph_progress"] = detail.get("graph_progress", {})
+        graph["graph_error_message"] = detail.get("graph_error_message", "")
+        return graph
+
+    def get_graph_status(self, textbook_id: str) -> dict:
+        detail = self.repository.get_textbook(textbook_id)
+        return {
+            "id": detail["id"],
+            "textbook_id": detail.get("textbook_id", detail["id"]),
+            "title": detail["title"],
+            "graph_status": detail.get("graph_status", "not_started"),
+            "graph_progress": detail.get("graph_progress", {}),
+            "graph_error_message": detail.get("graph_error_message", ""),
+        }
+
+    def enqueue_graph_generation(self, textbook_id: str) -> dict:
+        detail = self.repository.get_textbook(textbook_id)
+        if detail.get("status") != "ready":
+            raise AppError("教材正文尚未解析完成，无法生成图谱。", 400)
+
+        if detail.get("graph_status") == "building":
+            return self.get_graph_status(textbook_id)
+
+        now = datetime.utcnow().isoformat() + "Z"
+        detail["graph_status"] = "building"
+        detail["graph_error_message"] = ""
+        detail["graph_progress"] = {
+            "phase": "queued",
+            "current_chapter": 0,
+            "total_chapters": len(detail.get("chapters", [])),
+            "percent": 0,
+            "message": "图谱任务已提交，等待执行。",
+            "updated_at": now,
+        }
+        self.repository.save_textbook(detail)
+        self.executor.submit(self._build_graph_job, textbook_id)
+        return self.get_graph_status(textbook_id)
+
     def upload_textbooks(self, files) -> list[dict]:
         if not files:
             raise AppError("至少上传一个教材文件。", 400)
@@ -77,7 +119,17 @@ class TextbookService:
             "chunks": [],
             "keywords": [],
             "keyword_preview": [],
-            "graph": {"nodes": [], "edges": [], "stats": {"section_count": 0, "keyword_count": 0, "edge_count": 0}},
+            "graph": {"nodes": [], "edges": [], "stats": {"node_count": 0, "edge_count": 0, "chapter_count": 0}},
+            "graph_status": "not_started",
+            "graph_error_message": "",
+            "graph_progress": {
+                "phase": "idle",
+                "current_chapter": 0,
+                "total_chapters": 0,
+                "percent": 0,
+                "message": "正文解析完成后可单独生成图谱。",
+                "updated_at": now,
+            },
             "summary_preview": "",
             "error_message": "",
             "parse_progress": {
@@ -119,7 +171,6 @@ class TextbookService:
                 overlap=self.processing_settings.chunk_overlap,
             )
             keywords = extract_keywords(normalized_text, self.processing_settings.keyword_top_k)
-            graph = self.graph_service.build_textbook_graph(sections, chunks, keywords)
             summary_preview = self._build_summary_preview(sections)
 
             ready_detail = self.repository.get_textbook(textbook_id)
@@ -133,7 +184,24 @@ class TextbookService:
                     "chunks": chunks,
                     "keywords": keywords,
                     "keyword_preview": [item["term"] for item in keywords[:6]],
-                    "graph": graph,
+                    "graph": {
+                        "nodes": [],
+                        "edges": [],
+                        "chapter_graphs": [],
+                        "relation_types": [],
+                        "stats": {"node_count": 0, "edge_count": 0, "chapter_count": len(parsed["chapters"]), "relation_type_count": 0},
+                        "description": "正文已解析完成，尚未生成知识图谱。",
+                    },
+                    "graph_status": "not_started",
+                    "graph_error_message": "",
+                    "graph_progress": {
+                        "phase": "idle",
+                        "current_chapter": 0,
+                        "total_chapters": len(parsed["chapters"]),
+                        "percent": 0,
+                        "message": "正文解析完成，可单独触发图谱生成。",
+                        "updated_at": datetime.utcnow().isoformat() + "Z",
+                    },
                     "summary_preview": summary_preview,
                     "error_message": "",
                     "parse_progress": {
@@ -161,6 +229,35 @@ class TextbookService:
             logger.exception("Unexpected textbook parsing failure for %s", textbook_id)
             self._mark_parse_failed(textbook_id, f"解析失败：{error}")
 
+    def _build_graph_job(self, textbook_id: str) -> None:
+        detail = self.repository.get_textbook(textbook_id)
+        try:
+            graph = self.graph_service.build_textbook_graph(
+                textbook_id=textbook_id,
+                textbook_title=detail["title"],
+                chapters=detail.get("chapters", []),
+                progress_callback=lambda progress: self._update_graph_progress(textbook_id, progress),
+            )
+            refreshed = self.repository.get_textbook(textbook_id)
+            refreshed["graph"] = graph
+            refreshed["graph_status"] = "ready"
+            refreshed["graph_error_message"] = ""
+            refreshed["graph_progress"] = {
+                "phase": "completed",
+                "current_chapter": len(refreshed.get("chapters", [])),
+                "total_chapters": len(refreshed.get("chapters", [])),
+                "percent": 100,
+                "message": "知识图谱生成完成。",
+                "updated_at": datetime.utcnow().isoformat() + "Z",
+            }
+            self.repository.save_textbook(refreshed)
+        except AppError as error:
+            logger.exception("Textbook graph generation failed for %s", textbook_id)
+            self._mark_graph_failed(textbook_id, error.message)
+        except Exception as error:
+            logger.exception("Unexpected textbook graph failure for %s", textbook_id)
+            self._mark_graph_failed(textbook_id, f"图谱生成失败：{error}")
+
     def _update_progress(self, textbook_id: str, progress: dict) -> None:
         detail = self.repository.get_textbook(textbook_id)
         parse_progress = detail.get("parse_progress", {})
@@ -177,6 +274,25 @@ class TextbookService:
         detail["stats"]["pages"] = max(detail["stats"].get("pages", 0), updated_current_page)
         self.repository.save_textbook(detail)
 
+    def _update_graph_progress(self, textbook_id: str, progress: dict) -> None:
+        detail = self.repository.get_textbook(textbook_id)
+        graph_progress = detail.get("graph_progress", {})
+        current_chapter = progress.get("current_page", 0)
+        total_chapters = progress.get("total_pages", len(detail.get("chapters", [])))
+        graph_progress.update(
+            {
+                "phase": progress.get("phase", "knowledge_graph"),
+                "current_chapter": current_chapter,
+                "total_chapters": total_chapters,
+                "percent": progress.get("percent", 0),
+                "message": progress.get("message", ""),
+                "updated_at": datetime.utcnow().isoformat() + "Z",
+            }
+        )
+        detail["graph_status"] = "building"
+        detail["graph_progress"] = graph_progress
+        self.repository.save_textbook(detail)
+
     def _mark_parse_failed(self, textbook_id: str, message: str) -> None:
         detail = self.repository.get_textbook(textbook_id)
         detail["status"] = "failed"
@@ -186,6 +302,20 @@ class TextbookService:
             "current_page": detail.get("parse_progress", {}).get("current_page", 0),
             "total_pages": detail.get("total_pages", 0),
             "percent": detail.get("parse_progress", {}).get("percent", 0),
+            "message": message,
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+        }
+        self.repository.save_textbook(detail)
+
+    def _mark_graph_failed(self, textbook_id: str, message: str) -> None:
+        detail = self.repository.get_textbook(textbook_id)
+        detail["graph_status"] = "failed"
+        detail["graph_error_message"] = message
+        detail["graph_progress"] = {
+            "phase": "failed",
+            "current_chapter": detail.get("graph_progress", {}).get("current_chapter", 0),
+            "total_chapters": detail.get("graph_progress", {}).get("total_chapters", len(detail.get("chapters", []))),
+            "percent": detail.get("graph_progress", {}).get("percent", 0),
             "message": message,
             "updated_at": datetime.utcnow().isoformat() + "Z",
         }

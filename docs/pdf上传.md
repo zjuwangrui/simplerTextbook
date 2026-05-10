@@ -26,7 +26,8 @@
 目前上传教材会显示文件过大，后端需要优化大文件的处理逻辑，支持逐页解析并及时返回解析状态给前端。
 
 写一个测试后端api的powershell脚本，可以指定需要上传的pdf文件路径，脚本会调用后端的上传接口，并打印返回的结果。
-无命令行参数，在脚本内部设置参数和变量。
-powershell -ExecutionPolicy Bypass -File .\tests\Invoke-TextbookUpload.ps1 -FilePath ""C:\Users\lenovo\Downloads\textbooks\03_生理学.pdf"" -WaitForCompletion
+无命令行参数，在脚本内部设置参数和变量。脚本尽量简洁明了，注释清晰。
+
+powershell -ExecutionPolicy Bypass -File .\tests\Parse-Textbook.ps1
 
 发现代码有其他变动我改的，不要改回去
