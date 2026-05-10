@@ -1,10 +1,36 @@
 {
-	"$schema": "https://modelscope.cn/api/v1/studios/deploy_schema.json",
-	"sdk_type": "docker",
-	"resource_configuration": "platform/2v-cpu-16g-mem",
-	"port": 7860,
-    "environment_variables": [
-        {"name": "MODEL_NAME", "value": "my-model"},
-        {"name": "API_KEY", "value": "sk-xxxxxx"}
+  "$schema": "https://modelscope.cn/api/v1/studios/deploy_schema.json",
+  "sdk_type": "docker",
+  "resource_configuration": "platform/2v-cpu-16g-mem",
+  "port": 7860,
+  "environment_variables": [
+    {
+      "name": "APP_MAX_UPLOAD_MB",
+      "value": "512"
+    },
+    {
+      "name": "LLM_ENABLED",
+      "value": "true"
+    },
+    {
+      "name": "LLM_BASE_URL",
+      "value": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    },
+    {
+      "name": "LLM_API_KEY",
+      "value": "sk-4d8499672d304e4c9e48176fd23326fc"
+    },
+    {
+      "name": "LLM_MODEL",
+      "value": "qwen3.6-plus"
+    },
+    {
+      "name": "LLM_TIMEOUT_SECONDS",
+      "value": "180"
+    },
+    {
+      "name": "GUNICORN_WORKERS",
+      "value": "2"
+    }
   ]
 }

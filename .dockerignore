@@ -1,0 +1,17 @@
+.git
+.gitignore
+.vscode
+node_modules
+src/frontend/node_modules
+src/frontend/dist
+runtime
+tests/output
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+asset
+report
+view.json
+MyLearningPathsSection.tsx
