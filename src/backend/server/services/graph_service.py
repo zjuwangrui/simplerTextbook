@@ -59,9 +59,16 @@ class GraphService:
                     existing = nodes_by_id[canonical_id]
                     if len(normalized["definition"]) > len(existing["definition"]):
                         existing["definition"] = normalized["definition"]
+                    existing["frequency"] = int(existing.get("frequency", 1)) + 1
+                    existing["weight"] = max(existing.get("weight", 1), existing["frequency"])
+                    existing["source_textbooks"] = sorted(
+                        set(existing.get("source_textbooks", []) + [textbook_title])
+                    )
+                    existing["source_count"] = len(existing["source_textbooks"])
                     existing["chapters"] = sorted(set(existing.get("chapters", []) + [normalized["chapter"]]))
                     existing["mentions"].append(
                         {
+                            "textbook_title": textbook_title,
                             "chapter": normalized["chapter"],
                             "page": normalized["page"],
                             "source_temp_id": normalized["source_temp_id"],
@@ -82,9 +89,13 @@ class GraphService:
                     "page": normalized["page"],
                     "group": normalized["category"],
                     "weight": 1,
+                    "frequency": 1,
+                    "source_textbooks": [textbook_title],
+                    "source_count": 1,
                     "chapters": [normalized["chapter"]],
                     "mentions": [
                         {
+                            "textbook_title": textbook_title,
                             "chapter": normalized["chapter"],
                             "page": normalized["page"],
                             "source_temp_id": normalized["source_temp_id"],
@@ -139,6 +150,12 @@ class GraphService:
         }
 
     def build_combined_graph(self, textbooks: list[dict]) -> dict:
+        if all(
+            textbook.get("graph_status") == "ready" and (textbook.get("graph") or {}).get("nodes")
+            for textbook in textbooks
+        ):
+            return self._build_merged_knowledge_graph(textbooks)
+
         nodes = []
         edges = []
         keyword_books: dict[str, list[str]] = {}
@@ -181,6 +198,88 @@ class GraphService:
                 "shared_keyword_count": sum(1 for titles in keyword_books.values() if len(titles) > 1),
                 "edge_count": len(edges),
             },
+        }
+
+    def _build_merged_knowledge_graph(self, textbooks: list[dict]) -> dict:
+        merged_nodes: dict[str, dict] = {}
+        edge_map: dict[tuple[str, str, str], dict] = {}
+
+        for textbook in textbooks:
+            local_map: dict[str, str] = {}
+            for node in textbook.get("graph", {}).get("nodes", []):
+                canonical_key = self._canonical_name(node.get("name") or node.get("label") or node["id"])
+                if canonical_key not in merged_nodes:
+                    merged_id = f"merged_{len(merged_nodes) + 1:03d}"
+                    merged_nodes[canonical_key] = {
+                        "id": merged_id,
+                        "name": node.get("name") or node.get("label") or node["id"],
+                        "label": node.get("label") or node.get("name") or node["id"],
+                        "definition": node.get("definition", ""),
+                        "category": node.get("category", node.get("group", "知识点")),
+                        "chapter": node.get("chapter", ""),
+                        "page": node.get("page", 0),
+                        "group": node.get("category", node.get("group", "知识点")),
+                        "weight": 1,
+                        "frequency": 0,
+                        "source_textbooks": [],
+                        "source_count": 0,
+                        "chapters": [],
+                        "mentions": [],
+                    }
+
+                merged_node = merged_nodes[canonical_key]
+                local_map[node["id"]] = merged_node["id"]
+                if len(str(node.get("definition", ""))) > len(str(merged_node.get("definition", ""))):
+                    merged_node["definition"] = node.get("definition", "")
+                merged_node["chapter"] = merged_node.get("chapter") or node.get("chapter", "")
+                merged_node["page"] = merged_node.get("page") or node.get("page", 0)
+                merged_node["source_textbooks"] = sorted(
+                    set(merged_node.get("source_textbooks", []) + [textbook["title"]])
+                )
+                merged_node["source_count"] = len(merged_node["source_textbooks"])
+                merged_node["chapters"] = sorted(
+                    set(merged_node.get("chapters", []) + node.get("chapters", []))
+                )
+                merged_node["mentions"].extend(node.get("mentions", []))
+                merged_node["frequency"] = len(merged_node["mentions"]) or merged_node["source_count"]
+                merged_node["weight"] = max(1, merged_node["frequency"])
+
+            for edge in textbook.get("graph", {}).get("edges", []):
+                source_id = local_map.get(edge["source"])
+                target_id = local_map.get(edge["target"])
+                relation_type = edge.get("relation_type", "related")
+                if source_id is None or target_id is None:
+                    continue
+                edge_key = (source_id, target_id, relation_type)
+                if edge_key not in edge_map:
+                    edge_map[edge_key] = {
+                        "source": source_id,
+                        "target": target_id,
+                        "relation_type": relation_type,
+                        "description": edge.get("description", ""),
+                        "label": edge.get("label", relation_type),
+                        "weight": 1,
+                        "source_textbooks": [textbook["title"]],
+                    }
+                else:
+                    edge_map[edge_key]["weight"] = int(edge_map[edge_key]["weight"]) + 1
+                    edge_map[edge_key]["source_textbooks"] = sorted(
+                        set(edge_map[edge_key].get("source_textbooks", []) + [textbook["title"]])
+                    )
+
+        return {
+            "nodes": list(merged_nodes.values()),
+            "edges": list(edge_map.values()),
+            "relation_types": sorted({edge["relation_type"] for edge in edge_map.values()}),
+            "chapter_graphs": [],
+            "description": "多教材知识点图谱：合并相同知识点后展示来源与频次。",
+            "stats": {
+                "textbook_count": len(textbooks),
+                "node_count": len(merged_nodes),
+                "edge_count": len(edge_map),
+                "relation_type_count": len({edge["relation_type"] for edge in edge_map.values()}),
+            },
+            "source_textbooks": [textbook["title"] for textbook in textbooks],
         }
 
     def _extract_chapter_graph(self, prompt_template: str, textbook_title: str, chapter: dict) -> dict:
