@@ -1,4 +1,13 @@
-import { ChangeEvent, FormEvent, startTransition, useEffect, useState } from "react";
+import {
+  ChangeEvent,
+  DragEvent,
+  FormEvent,
+  startTransition,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 
 import { api, buildFormData } from "./api";
 import { KnowledgeGraphCanvas } from "./components/KnowledgeGraphCanvas";
@@ -7,11 +16,11 @@ import {
   DialogueTurn,
   GraphData,
   IntegrationResult,
+  QAResult,
   ReportItem,
   TabKey,
   TextbookDetail,
-  TextbookSummary,
-  QAResult
+  TextbookSummary
 } from "./types";
 import "./styles.css";
 
@@ -23,6 +32,7 @@ const tabs: Array<{ key: TabKey; label: string }> = [
 ];
 
 export default function App() {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [textbooks, setTextbooks] = useState<TextbookSummary[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [focusedTextbookId, setFocusedTextbookId] = useState<string | null>(null);
@@ -40,19 +50,49 @@ export default function App() {
   const [error, setError] = useState("");
   const [latestDetail, setLatestDetail] = useState<TextbookDetail | null>(null);
   const [latestReportContent, setLatestReportContent] = useState("");
+  const [isDragActive, setIsDragActive] = useState(false);
+
+  const parsingCount = useMemo(
+    () => textbooks.filter((item) => item.status === "parsing").length,
+    [textbooks]
+  );
+  const readyTextbooks = useMemo(
+    () => textbooks.filter((item) => item.status === "ready"),
+    [textbooks]
+  );
+  const focusedSummary = useMemo(
+    () => textbooks.find((item) => item.id === focusedTextbookId) ?? null,
+    [focusedTextbookId, textbooks]
+  );
 
   useEffect(() => {
-    void hydrate();
+    void loadInitialData();
   }, []);
 
   useEffect(() => {
     if (!focusedTextbookId) {
+      startTransition(() => {
+        setLatestDetail(null);
+        setGraph(null);
+      });
       return;
     }
-    void loadTextbookGraph(focusedTextbookId);
-  }, [focusedTextbookId]);
+    void loadFocusedTextbook(focusedTextbookId);
+  }, [focusedTextbookId, textbooks]);
 
-  async function hydrate() {
+  useEffect(() => {
+    if (parsingCount === 0) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void refreshTextbooks(false);
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+  }, [parsingCount]);
+
+  async function loadInitialData() {
     setError("");
     try {
       const [textbookResponse, dialogueResponse, reportResponse] = await Promise.all([
@@ -62,21 +102,10 @@ export default function App() {
       ]);
 
       startTransition(() => {
-        setTextbooks(textbookResponse.items);
         setDialogueHistory(dialogueResponse.items);
         setReports(reportResponse.items);
       });
-
-      if (textbookResponse.items.length > 0) {
-        const ids = textbookResponse.items.map((item) => item.id);
-        setSelectedIds(ids);
-        setFocusedTextbookId(textbookResponse.items[0].id);
-        const detail = await api.get<TextbookDetail>(`/api/textbooks/${textbookResponse.items[0].id}`);
-        setLatestDetail(detail);
-        setStatus(`已加载 ${textbookResponse.items.length} 本教材。`);
-      } else {
-        setStatus("当前还没有教材，先从左侧上传。");
-      }
+      applyTextbookState(textbookResponse.items);
 
       if (reportResponse.items.length > 0) {
         setLatestReportContent(reportResponse.items[0].content ?? "");
@@ -87,16 +116,60 @@ export default function App() {
     }
   }
 
-  async function loadTextbookGraph(textbookId: string) {
+  async function refreshTextbooks(updateHeroStatus = true) {
     try {
-      const [graphResponse, detailResponse] = await Promise.all([
-        api.get<GraphData>(`/api/graphs/textbooks/${textbookId}`),
-        api.get<TextbookDetail>(`/api/textbooks/${textbookId}`)
-      ]);
-      startTransition(() => {
-        setGraph(graphResponse);
-        setLatestDetail(detailResponse);
+      const response = await api.get<{ items: TextbookSummary[] }>("/api/textbooks");
+      applyTextbookState(response.items, updateHeroStatus);
+    } catch (requestError) {
+      setError(readError(requestError));
+    }
+  }
+
+  function applyTextbookState(items: TextbookSummary[], updateHeroStatus = true) {
+    startTransition(() => {
+      setTextbooks(items);
+      setSelectedIds((current) => {
+        const readyIds = items.filter((item) => item.status === "ready").map((item) => item.id);
+        const preserved = current.filter((id) => readyIds.includes(id));
+        return preserved.length > 0 ? preserved : readyIds;
       });
+      setFocusedTextbookId((current) => {
+        if (current && items.some((item) => item.id === current)) {
+          return current;
+        }
+        return items[0]?.id ?? null;
+      });
+    });
+
+    if (!updateHeroStatus && items.some((item) => item.status === "parsing")) {
+      return;
+    }
+
+    if (items.length === 0) {
+      setStatus("当前还没有教材，先从左侧上传。");
+      return;
+    }
+
+    const pending = items.filter((item) => item.status === "parsing").length;
+    if (pending > 0) {
+      setStatus(`已接收 ${items.length} 本教材，其中 ${pending} 本正在后台解析。`);
+      return;
+    }
+    setStatus(`已加载 ${items.length} 本教材。`);
+  }
+
+  async function loadFocusedTextbook(textbookId: string) {
+    try {
+      const detailResponse = await api.get<TextbookDetail>(`/api/textbooks/${textbookId}`);
+      startTransition(() => setLatestDetail(detailResponse));
+
+      if (detailResponse.status !== "ready") {
+        startTransition(() => setGraph(null));
+        return;
+      }
+
+      const graphResponse = await api.get<GraphData>(`/api/graphs/textbooks/${textbookId}`);
+      startTransition(() => setGraph(graphResponse));
     } catch (requestError) {
       setError(readError(requestError));
     }
@@ -114,19 +187,24 @@ export default function App() {
     }
   }
 
-  async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
-    const files = event.target.files;
-    if (!files || files.length === 0) {
+  async function handleUploadInput(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) {
       return;
     }
 
+    await uploadFiles(files);
+    event.target.value = "";
+  }
+
+  async function uploadFiles(files: File[]) {
     setError("");
-    setStatus("正在上传并解析教材...");
+    setStatus(`正在上传 ${files.length} 个文件...`);
+
     try {
-      await api.upload<{ items: TextbookSummary[] }>("/api/textbooks/upload", buildFormData(files));
-      event.target.value = "";
-      await hydrate();
-      setStatus("教材上传完成，图谱与索引已更新。");
+      const response = await api.upload<{ items: TextbookSummary[] }>("/api/textbooks/upload", buildFormData(files));
+      await refreshTextbooks(false);
+      setStatus(`已接收 ${response.items.length} 个文件，正在后台逐页解析。`);
     } catch (requestError) {
       setError(readError(requestError));
       setStatus("教材上传失败。");
@@ -224,13 +302,50 @@ export default function App() {
   }
 
   function resolveScopeIds() {
-    return selectedIds.length > 0 ? selectedIds : textbooks.map((item) => item.id);
+    const readyIds = selectedIds.filter((id) => readyTextbooks.some((item) => item.id === id));
+    const fallbackIds = readyTextbooks.map((item) => item.id);
+    const targetIds = readyIds.length > 0 ? readyIds : fallbackIds;
+    if (targetIds.length === 0) {
+      throw new Error("当前没有已完成解析的教材。");
+    }
+    return targetIds;
   }
 
   function toggleSelection(textbookId: string) {
+    const target = textbooks.find((item) => item.id === textbookId);
+    if (!target || target.status !== "ready") {
+      return;
+    }
+
     setSelectedIds((current) =>
-      current.includes(textbookId) ? current.filter((item) => item !== textbookId) : [...current, textbookId]
+      current.includes(textbookId)
+        ? current.filter((item) => item !== textbookId)
+        : [...current, textbookId]
     );
+  }
+
+  function handleDropZoneClick() {
+    fileInputRef.current?.click();
+  }
+
+  function handleDragOver(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsDragActive(true);
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsDragActive(false);
+  }
+
+  async function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsDragActive(false);
+    const files = Array.from(event.dataTransfer.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+    await uploadFiles(files);
   }
 
   return (
@@ -240,11 +355,14 @@ export default function App() {
           <p className="eyebrow">SimplerTextbook</p>
           <h1>学科知识整合智能体初版</h1>
           <p className="hero-copy">
-            左侧管理教材，中间观察图谱，右侧直接完成整合、问答、教师反馈和报告输出。
+            上传教材后，后端会先落盘，再后台逐页解析 PDF，并把解析状态持续回传给前端。
           </p>
         </div>
         <div className="hero-status">
           <span className="status-pill">{status}</span>
+          {parsingCount > 0 ? (
+            <span className="status-pill progress-pill">解析队列中: {parsingCount} 本</span>
+          ) : null}
           {error ? <span className="status-pill error-pill">{error}</span> : null}
         </div>
       </header>
@@ -254,12 +372,27 @@ export default function App() {
           <section className="upload-card">
             <div className="section-heading">
               <h2>教材管理</h2>
-              <p>支持 `pdf`、`docx`、`txt`、`md`</p>
+              <p>支持 PDF、Markdown、TXT、Word.docx，支持拖拽和批量上传</p>
             </div>
-            <label className="upload-field">
-              <span>上传多本教材</span>
-              <input multiple type="file" onChange={handleUpload} />
-            </label>
+            <div
+              className={`upload-dropzone ${isDragActive ? "upload-dropzone-active" : ""}`}
+              onClick={handleDropZoneClick}
+              onDragLeave={handleDragLeave}
+              onDragOver={handleDragOver}
+              onDrop={(event) => void handleDrop(event)}
+              role="button"
+              tabIndex={0}
+            >
+              <input
+                accept=".pdf,.md,.txt,.docx"
+                multiple
+                onChange={(event) => void handleUploadInput(event)}
+                ref={fileInputRef}
+                type="file"
+              />
+              <strong>拖拽文件到这里</strong>
+              <span>或点击选择多个教材文件</span>
+            </div>
           </section>
 
           <section className="list-card">
@@ -278,6 +411,7 @@ export default function App() {
                   <div className="book-head">
                     <input
                       checked={selectedIds.includes(item.id)}
+                      disabled={item.status !== "ready"}
                       onChange={() => toggleSelection(item.id)}
                       type="checkbox"
                     />
@@ -288,8 +422,16 @@ export default function App() {
                   <p>{item.filename}</p>
                   <div className="meta-row">
                     <span>{item.format.toUpperCase()}</span>
-                    <span>{item.stats.characters} 字</span>
+                    <span>{formatFileSize(item.file_size_bytes)}</span>
+                    <span className={`status-chip status-${item.status}`}>{statusLabel(item.status)}</span>
                   </div>
+                  <div className="meta-row">
+                    <span>{item.total_pages || item.stats.pages || 0} 页</span>
+                    <span>{item.total_chars || item.stats.characters || 0} 字</span>
+                    <span>{item.parse_progress?.percent ?? 0}%</span>
+                  </div>
+                  <p className="progress-text">{item.parse_progress?.message || "等待处理"}</p>
+                  {item.error_message ? <p className="error-text">{item.error_message}</p> : null}
                   <div className="keyword-row">
                     {item.keyword_preview.map((keyword) => (
                       <span className="keyword-chip" key={keyword}>
@@ -299,7 +441,7 @@ export default function App() {
                   </div>
                 </article>
               ))}
-              {textbooks.length === 0 ? <p className="empty-state">上传后会在这里展示教材状态。</p> : null}
+              {textbooks.length === 0 ? <p className="empty-state">上传后会在这里展示文件名、格式、大小和解析状态。</p> : null}
             </div>
           </section>
         </aside>
@@ -308,12 +450,12 @@ export default function App() {
           <div className="section-heading">
             <div>
               <h2>知识图谱可视化</h2>
-              <p>优先展示当前教材图谱，也可切换为多教材组合图谱。</p>
+              <p>教材解析完成后即可生成知识图谱；解析中会持续展示当前页进度。</p>
             </div>
             {latestDetail ? (
               <div className="graph-kpis">
+                <span>{latestDetail.total_pages || latestDetail.stats.pages || 0} 页</span>
                 <span>{latestDetail.stats.sections} 章节</span>
-                <span>{latestDetail.stats.chunks} 检索块</span>
                 <span>{latestDetail.stats.keywords} 关键词</span>
               </div>
             ) : null}
@@ -322,15 +464,23 @@ export default function App() {
 
           <div className="insight-strip">
             <article className="insight-card">
-              <h3>教材摘要预览</h3>
-              <p>{latestDetail?.summary_preview ?? "上传教材后，这里会展示自动提取的内容预览。"}</p>
+              <h3>教材解析预览</h3>
+              <p>
+                {latestDetail?.status === "ready"
+                  ? latestDetail.summary_preview || "解析完成，但尚未生成摘要预览。"
+                  : latestDetail?.parse_progress?.message || "上传教材后，这里会展示自动提取的内容预览。"}
+              </p>
             </article>
             <article className="insight-card">
               <h3>当前分析焦点</h3>
               <p>
-                {analysis
-                  ? `已识别 ${analysis.shared_keywords.length} 个共享主题，可在右侧继续做摘要整合和问答。`
-                  : "先执行跨教材分析，再查看重叠、互补与缺失主题。"}
+                {focusedSummary?.status === "failed"
+                  ? focusedSummary.error_message || "解析失败，请重新上传或检查文件内容。"
+                  : analysis
+                    ? `已识别 ${analysis.shared_keywords.length} 个共享主题，可在右侧继续做摘要整合和问答。`
+                    : parsingCount > 0
+                      ? "系统正在后台逐页解析教材，完成后即可进行跨教材分析。"
+                      : "先执行跨教材分析，再查看重叠、互补与缺失主题。"}
               </p>
             </article>
           </div>
@@ -365,10 +515,17 @@ export default function App() {
                 </section>
               ) : null}
 
-              <form className="stack-form" onSubmit={runIntegration}>
+              <form className="stack-form" onSubmit={(event) => void runIntegration(event)}>
                 <label>
                   目标压缩比例
-                  <input max="0.5" min="0.1" onChange={(event) => setRatio(event.target.value)} step="0.05" type="number" value={ratio} />
+                  <input
+                    max="0.5"
+                    min="0.1"
+                    onChange={(event) => setRatio(event.target.value)}
+                    step="0.05"
+                    type="number"
+                    value={ratio}
+                  />
                 </label>
                 <button className="primary-button" type="submit">
                   生成整合摘要
@@ -389,10 +546,14 @@ export default function App() {
 
           {activeTab === "qa" ? (
             <div className="tab-panel">
-              <form className="stack-form" onSubmit={askQuestion}>
+              <form className="stack-form" onSubmit={(event) => void askQuestion(event)}>
                 <label>
                   输入问题
-                  <textarea onChange={(event) => setQuestion(event.target.value)} placeholder="例如：这些教材在核心概念解释上有哪些共同点？" value={question} />
+                  <textarea
+                    onChange={(event) => setQuestion(event.target.value)}
+                    placeholder="例如：这些教材在核心概念解释上有哪些共同点？"
+                    value={question}
+                  />
                 </label>
                 <button className="primary-button" type="submit">
                   开始问答
@@ -421,10 +582,14 @@ export default function App() {
 
           {activeTab === "dialogue" ? (
             <div className="tab-panel">
-              <form className="stack-form" onSubmit={sendTeacherMessage}>
+              <form className="stack-form" onSubmit={(event) => void sendTeacherMessage(event)}>
                 <label>
                   教师反馈
-                  <textarea onChange={(event) => setTeacherMessage(event.target.value)} placeholder="例如：第三章内容压缩过多，请保留更多案例。" value={teacherMessage} />
+                  <textarea
+                    onChange={(event) => setTeacherMessage(event.target.value)}
+                    placeholder="例如：第三章内容压缩过多，请保留更多案例。"
+                    value={teacherMessage}
+                  />
                 </label>
                 <button className="primary-button" type="submit">
                   发送反馈
@@ -464,7 +629,7 @@ export default function App() {
               </section>
               <section className="result-card">
                 <h3>最新报告内容</h3>
-                <pre>{latestReportContent || "生成报告后，这里显示最新结果。"} </pre>
+                <pre>{latestReportContent || "生成报告后，这里显示最新结果。"}</pre>
               </section>
             </div>
           ) : null}
@@ -479,4 +644,28 @@ function readError(error: unknown) {
     return error.message;
   }
   return "未知错误";
+}
+
+function formatFileSize(bytes: number) {
+  if (!bytes) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB"];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function statusLabel(status: string) {
+  if (status === "ready") {
+    return "已完成";
+  }
+  if (status === "failed") {
+    return "失败";
+  }
+  return "解析中";
 }

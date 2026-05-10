@@ -31,6 +31,7 @@ def create_app() -> Flask:
 
     app = Flask(__name__)
     app.config["settings"] = settings
+    app.config["MAX_CONTENT_LENGTH"] = settings.app.max_upload_mb * 1024 * 1024
 
     configure_logging(app, settings)
     CORS(app, resources={r"/api/*": {"origins": settings.app.cors_origins}})
@@ -102,6 +103,21 @@ def register_error_handlers(app: Flask) -> None:
     @app.errorhandler(404)
     def handle_not_found(_error):
         return jsonify({"error": {"message": "接口不存在。", "details": {}}}), 404
+
+    @app.errorhandler(413)
+    def handle_too_large(_error):
+        settings = app.config["settings"]
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "message": "上传文件超过服务端限制。",
+                        "details": {"max_upload_mb": settings.app.max_upload_mb},
+                    }
+                }
+            ),
+            413,
+        )
 
     @app.errorhandler(Exception)
     def handle_unexpected_error(error: Exception):

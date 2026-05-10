@@ -31,8 +31,8 @@ async function request<T>(url: string, init: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function buildFormData(fileList: FileList) {
+export function buildFormData(files: Iterable<File>) {
   const formData = new FormData();
-  Array.from(fileList).forEach((file) => formData.append("files", file));
+  Array.from(files).forEach((file) => formData.append("files", file));
   return formData;
 }

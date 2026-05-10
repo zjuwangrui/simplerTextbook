@@ -8,6 +8,7 @@ import yaml
 class AppSection:
     host: str
     port: int
+    max_upload_mb: int
     cors_origins: list[str]
 
 
@@ -70,6 +71,7 @@ def load_settings() -> Settings:
         app=AppSection(
             host=raw["app"]["host"],
             port=int(raw["app"]["port"]),
+            max_upload_mb=int(raw["app"].get("max_upload_mb", 512)),
             cors_origins=list(raw["app"].get("cors_origins", [])),
         ),
         storage=StorageSection(

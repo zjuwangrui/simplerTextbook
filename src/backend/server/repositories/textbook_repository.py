@@ -35,16 +35,23 @@ class TextbookRepository:
         with target.open("r", encoding="utf-8") as handle:
             return json.load(handle)
 
+    def get_textbook_summary(self, textbook_id: str) -> dict:
+        return self._to_summary(self.get_textbook(textbook_id))
+
     def save_textbook(self, detail: dict) -> dict:
         detail_path = self.textbook_dir / f"{detail['id']}.json"
-        with detail_path.open("w", encoding="utf-8") as handle:
-            json.dump(detail, handle, ensure_ascii=False, indent=2)
+        self._write_json(detail_path, detail)
 
         index_items = self._read_index()
         index_items = [item for item in index_items if item["id"] != detail["id"]]
         index_items.append(self._to_summary(detail))
         self._write_index(index_items)
         return detail
+
+    def update_textbook(self, textbook_id: str, changes: dict) -> dict:
+        detail = self.get_textbook(textbook_id)
+        detail.update(changes)
+        return self.save_textbook(detail)
 
     def get_many(self, textbook_ids: list[str]) -> list[dict]:
         if not textbook_ids:
@@ -54,13 +61,29 @@ class TextbookRepository:
     def _to_summary(self, detail: dict) -> dict:
         return {
             "id": detail["id"],
+            "textbook_id": detail.get("textbook_id", detail["id"]),
             "title": detail["title"],
             "filename": detail["filename"],
             "format": detail["format"],
             "uploaded_at": detail["uploaded_at"],
             "status": detail["status"],
-            "stats": detail["stats"],
-            "keyword_preview": [item["term"] for item in detail["keywords"][:6]],
+            "file_size_bytes": detail.get("file_size_bytes", 0),
+            "total_pages": detail.get("total_pages", 0),
+            "total_chars": detail.get("total_chars", 0),
+            "parse_progress": detail.get("parse_progress", {}),
+            "error_message": detail.get("error_message", ""),
+            "stats": detail.get(
+                "stats",
+                {
+                    "characters": 0,
+                    "sections": 0,
+                    "chunks": 0,
+                    "keywords": 0,
+                    "pages": 0,
+                },
+            ),
+            "keyword_preview": detail.get("keyword_preview")
+            or [item["term"] for item in detail.get("keywords", [])[:6]],
         }
 
     def _read_index(self) -> list[dict]:
@@ -68,8 +91,13 @@ class TextbookRepository:
             return json.load(handle)
 
     def _write_index(self, data: list[dict]) -> None:
-        with self.index_file.open("w", encoding="utf-8") as handle:
+        self._write_json(self.index_file, data)
+
+    def _write_json(self, target: Path, data: dict | list) -> None:
+        temp_target = target.with_suffix(f"{target.suffix}.tmp")
+        with temp_target.open("w", encoding="utf-8") as handle:
             json.dump(data, handle, ensure_ascii=False, indent=2)
+        temp_target.replace(target)
 
     def _safe_filename(self, filename: str) -> str:
         stem = re.sub(r"[^\w.\-\u4e00-\u9fff]+", "_", filename, flags=re.UNICODE).strip("_")

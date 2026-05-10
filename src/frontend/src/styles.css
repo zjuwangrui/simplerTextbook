@@ -173,6 +173,43 @@ button {
   color: #334155;
 }
 
+.upload-dropzone {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 16px;
+  min-height: 170px;
+  padding: 20px;
+  border: 2px dashed #0ea5a4;
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(240, 253, 250, 0.95), rgba(255, 247, 237, 0.95));
+  color: #0f766e;
+  text-align: center;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone-active {
+  transform: translateY(-2px);
+  border-color: #0891b2;
+  box-shadow: 0 14px 24px rgba(14, 165, 233, 0.14);
+}
+
+.upload-dropzone input {
+  display: none;
+}
+
+.upload-dropzone strong {
+  font-size: 18px;
+}
+
+.upload-dropzone span {
+  color: #475569;
+  font-size: 13px;
+}
+
 .ghost-button,
 .tab-button {
   padding: 10px 14px;
@@ -258,6 +295,37 @@ button {
   background: #fff7ed;
   color: #c2410c;
   font-size: 12px;
+}
+
+.status-chip {
+  color: white !important;
+}
+
+.status-ready {
+  background: #16a34a !important;
+}
+
+.status-parsing {
+  background: #0891b2 !important;
+}
+
+.status-failed {
+  background: #dc2626 !important;
+}
+
+.progress-pill {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.progress-text {
+  margin-top: 8px;
+  color: #334155 !important;
+}
+
+.error-text {
+  margin-top: 8px;
+  color: #b91c1c !important;
 }
 
 .graph-shell {

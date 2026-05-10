@@ -16,13 +16,42 @@ def upload_textbooks():
     files = request.files.getlist("files")
     service = current_app.config["services"]["textbook"]
     items = service.upload_textbooks(files)
-    return jsonify({"items": items}), 201
+    return jsonify({"items": items}), 202
 
 
 @textbooks_bp.get("/<textbook_id>")
 def get_textbook(textbook_id: str):
     service = current_app.config["services"]["textbook"]
-    return jsonify(service.get_textbook_detail(textbook_id))
+    detail = service.get_textbook_detail(textbook_id)
+    detail["parsed_output"] = {
+        "textbook_id": detail.get("textbook_id", detail["id"]),
+        "filename": detail["filename"],
+        "title": detail["title"],
+        "total_pages": detail.get("total_pages", 0),
+        "total_chars": detail.get("total_chars", 0),
+        "chapters": detail.get("chapters", []),
+    }
+    return jsonify(detail)
+
+
+@textbooks_bp.get("/<textbook_id>/status")
+def get_textbook_status(textbook_id: str):
+    service = current_app.config["services"]["textbook"]
+    detail = service.get_textbook_detail(textbook_id)
+    return jsonify(
+        {
+            "id": detail["id"],
+            "textbook_id": detail.get("textbook_id", detail["id"]),
+            "filename": detail["filename"],
+            "title": detail["title"],
+            "status": detail["status"],
+            "parse_progress": detail.get("parse_progress", {}),
+            "error_message": detail.get("error_message", ""),
+            "total_pages": detail.get("total_pages", 0),
+            "total_chars": detail.get("total_chars", 0),
+            "detail_url": f"/api/textbooks/{textbook_id}",
+        }
+    )
 
 
 @textbooks_bp.get("/<textbook_id>/summary")

@@ -101,12 +101,23 @@ python app.py
 ## 初版能力范围
 
 - 多教材上传与解析：`pdf`、`docx`、`txt`、`md`
+- 大文件上传后后台逐页解析 PDF，并通过状态轮询返回进度
 - 单教材知识图谱生成
 - 跨教材重叠/互补/缺失主题分析
 - 30% 以内目标比例的抽取式整合摘要
 - 基于教材原文片段的 RAG 问答与引用
 - 教师反馈对话记录
 - Markdown 报告生成与落盘
+
+## 测试脚本
+
+后端上传接口测试脚本在 [Invoke-TextbookUpload.ps1](/D:/constructing_projects/simplerTextbook/tests/Invoke-TextbookUpload.ps1)。
+
+示例：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\Invoke-TextbookUpload.ps1 -FilePath "D:\books\生理学.pdf" -WaitForCompletion
+```
 
 ## 说明
 

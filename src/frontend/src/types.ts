@@ -1,24 +1,51 @@
 export type TabKey = "integration" | "qa" | "dialogue" | "report";
 
+export interface ParseProgress {
+  phase: string;
+  current_page: number;
+  total_pages: number;
+  percent: number;
+  message: string;
+  updated_at?: string;
+}
+
 export interface TextbookSummary {
   id: string;
+  textbook_id?: string;
   title: string;
   filename: string;
   format: string;
   uploaded_at: string;
   status: string;
+  file_size_bytes: number;
+  total_pages: number;
+  total_chars: number;
+  parse_progress: ParseProgress;
+  error_message?: string;
   stats: {
     characters: number;
     sections: number;
     chunks: number;
     keywords: number;
+    pages?: number;
   };
   keyword_preview: string[];
 }
 
+export interface TextbookChapter {
+  chapter_id: string;
+  title: string;
+  page_start: number;
+  page_end: number;
+  content: string;
+  char_count: number;
+}
+
 export interface TextbookDetail extends TextbookSummary {
+  textbook_id: string;
   stored_path: string;
   summary_preview: string;
+  chapters: TextbookChapter[];
 }
 
 export interface GraphNode {
